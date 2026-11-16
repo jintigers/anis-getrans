@@ -1,0 +1,8 @@
+# 모델 파일(어댑터)은 저장소에 넣지 않습니다 (Hugging Face jintigers/anis-getrans · krmod.anis.co.kr 에서 배포)
+model/adapter/
+
+.venv/
+__pycache__/
+*.pyc
+build/
+dist/

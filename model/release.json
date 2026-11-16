@@ -1,0 +1,13 @@
+{
+ "name": "ANIS GeTrans",
+ "version": "0.1.0",
+ "base_model": "TrevorJS/gemma-4-E2B-it-uncensored",
+ "base_revision": "7a34581e4d278ccd2aa85e9fa6328060f7370cca",
+ "base_license": "Apache-2.0 (google/gemma-4-E2B-it 기반)",
+ "adapter": "LoRA r32 alpha64 (attention q/k/v/o, MLP gate/up/down)",
+ "prompt": "instruction-free (text only; <prev>/<tgt>/<next> tags when context is given)",
+ "decoding": "greedy",
+ "max_new_tokens": 256,
+ "dtype": "bfloat16",
+ "released": "2026-11-16"
+}
