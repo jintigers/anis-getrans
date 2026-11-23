@@ -272,6 +272,56 @@ curl http://127.0.0.1:11436/v1/chat/completions -H "Content-Type: application/js
 
 ---
 
+## 5-1. GGUF (llama.cpp · Ollama · LM Studio)
+
+설치 없이 llama.cpp 계열 프로그램에서 바로 쓰는 **Q4_K_M GGUF**도 있습니다. 0.2.0 어댑터를 바탕 모델에 합친 뒤 4비트로 줄인 파일입니다(텍스트 전용, 이미지·음성 부분 없음).
+
+| | 배포판(이 프로그램) | GGUF Q4_K_M |
+|---|---|---|
+| 크기 | 어댑터 185MB + 바탕 모델 9.6GB | 3.4GB 한 파일 |
+| 메모리 (문맥 4096) | GPU 약 11GB | GPU 약 2.1GB + RAM 약 2GB, CPU만: RAM 약 3~4GB |
+| 번역 방식 | 빔 탐색 4 + 재번역 | 탐욕 생성 (빔·재번역 없음) |
+| JK Trans 1.3.1 일→한 / 한→일 | 51.69 / 51.96 | 50.27 / 50.70 |
+
+같은 탐욕 생성으로 잰 원래 정밀도(bf16)는 50.61 / 50.64입니다. 4비트로 줄여서 떨어진 몫은 일→한 −0.34, 한→일 +0.06(차이 없음)입니다.
+
+**받기**
+- HuggingFace (한 파일): [jintigers/anis-getrans](https://huggingface.co/jintigers/anis-getrans) 의 `anis-getrans-0.2.0-Q4_K_M.gguf` (라이선스 동의 필요)
+  ```bash
+  hf download jintigers/anis-getrans anis-getrans-0.2.0-Q4_K_M.gguf --local-dir .
+  ```
+- GitHub 릴리스 (3조각): [v0.2.0](https://github.com/jintigers/anis-getrans/releases/tag/v0.2.0) 의 `anis-getrans-0.2.0-Q4_K_M-0000N-of-00003.gguf`. GitHub는 파일 하나당 2GB까지라 나눠 올렸습니다. llama.cpp는 첫 조각만 지정하면 나머지를 같이 읽습니다. Ollama·LM Studio에서는 한 파일로 합쳐 쓰세요.
+  ```bash
+  llama-gguf-split --merge anis-getrans-0.2.0-Q4_K_M-00001-of-00003.gguf anis-getrans-0.2.0-Q4_K_M.gguf
+  ```
+
+**Ollama**
+```bash
+cat > Modelfile <<'MF'
+FROM ./anis-getrans-0.2.0-Q4_K_M.gguf
+PARAMETER temperature 0
+PARAMETER num_predict 256
+MF
+ollama create anis-getrans -f Modelfile
+ollama run --think=false anis-getrans "今日は雨が降ってるね。"
+```
+API로 부를 때도 `"think": false` 를 넣어 주세요. Ollama는 Gemma 4 모델에 기본으로 생각 모드를 켜는데, 이 모델은 생각 모드 없이 학습했습니다.
+```bash
+curl http://127.0.0.1:11434/api/generate -d '{"model":"anis-getrans","prompt":"선배, 오늘 같이 갈래요?","think":false,"stream":false}'
+```
+
+**llama.cpp**
+```bash
+llama-server -m anis-getrans-0.2.0-Q4_K_M.gguf -ngl 99 -c 4096
+curl http://127.0.0.1:8080/v1/chat/completions -d '{"messages":[{"role":"user","content":"おはようございます、先輩！"}],"temperature":0}'
+```
+
+- 지시문 없이 번역할 글만 user 메시지로 넣습니다. 방향은 원문 언어로 정해집니다.
+- 앞뒤 문맥은 `<prev> 앞 대사 <tgt> 번역할 대사 <next> 뒤 대사` 형식으로 한 메시지에 넣습니다.
+- 라이선스는 배포판과 같습니다(개인·비영리 무료, 허가받지 않은 파인튜닝·재배포 제한).
+
+---
+
 ## 6. 입력 형식 참고
 
 - **문맥**: 문맥을 주면 모델 입력은 `<prev> <대사> 앞문장 <tgt> <대사> 대상 <next> <대사> 뒷문장` 형태가 됩니다. `<대사>` 자리는 `--line-type` 으로 바꿀 수 있습니다. 문맥이 없으면 `<tgt> 대상` 만 넣습니다.
@@ -321,5 +371,6 @@ anis-getrans-0.2.0/
 
 ANIS GeTrans **0.2.0**은 두 번째 공개판입니다. ANIS Trans와는 따로 개발하며 버전 번호도 따로 셉니다.
 
+- **0.2.0 GGUF** (2026-11-23): 0.2.0 가중치를 합친 Q4_K_M GGUF 추가 (5-1 참고, 탐욕 생성 기준 1.3.1 일→한 50.27, 한→일 50.70).
 - **0.2.0** (2026-11-23): 어댑터(가중치)는 0.1.0과 같고 번역 방식이 바뀌었습니다. 빔 탐색 4로 번역하고, 빈 출력·원문 언어가 남은 출력(번역 안 됨)·같은 말이 되풀이된 출력을 다시 번역해 고칩니다. 한 줄 번역은 0.1.0보다 조금 느립니다(`--beam 1` 로 0.1.0과 같은 탐욕 생성을 쓸 수 있습니다).
 - **0.1.0** (2026-11-16): 첫 공개판.
