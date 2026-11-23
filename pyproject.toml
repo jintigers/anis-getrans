@@ -1,6 +1,6 @@
 [project]
 name = "anis-getrans"
-version = "0.1.0"
+version = "0.2.0"
 description = "ANIS GeTrans — 일본어↔한국어 번역기 (Gemma 4 E2B 기반, CLI·웹 GUI·로컬 API 서버)"
 readme = "README.md"
 requires-python = ">=3.10"

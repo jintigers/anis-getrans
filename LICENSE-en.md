@@ -49,7 +49,7 @@ Regardless of purpose (Non-Commercial or Commercial), the User may not do any of
 ## Article 5 (Attribution)
 
 1. When publishing or distributing Output, the User must display the following attribution prominently:
-   > This translation was produced with ANIS GeTrans 0.1 (https://krmod.anis.co.kr).
+   > This translation was produced with ANIS GeTrans 0.2 (https://krmod.anis.co.kr).
 2. Any documentation distributed with the Model must include a copy of this License or its location.
 
 ## Article 6 (Ownership)

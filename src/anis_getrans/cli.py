@@ -73,7 +73,7 @@ def build_parser():
                    help="정밀도 (auto, bfloat16, float16, float32). auto = bfloat16 (공개 점수와 같은 설정)")
     g.add_argument("--threads", type=int, default=0, help="CPU 스레드 수 (0=자동)")
     g.add_argument("--batch-size", type=int, default=16)
-    g.add_argument("--beam", type=int, default=1, help="(쓰지 않음) GeTrans 는 늘 탐욕 생성입니다")
+    g.add_argument("--beam", type=int, default=4, help="빔 탐색 크기 (기본 4, 공개 점수와 같은 설정; 1 = 탐욕 생성, 더 빠름)")
     g.add_argument("--max-length", type=int, default=256, help="한 줄 출력 최대 토큰 수 (기본 256, 공개 점수와 같은 설정)")
     g.add_argument("--model", metavar="폴더", help="모델 폴더 (기본: 번들의 model/)")
     g.add_argument("--base", metavar="폴더|저장소", help="바탕 모델 폴더나 HuggingFace 저장소 (기본: 자동으로 내려받음, 환경 변수 ANIS_GETRANS_BASE)")
@@ -88,7 +88,7 @@ def build_parser():
 def _load_engine(args):
     from .engine import Engine
     return Engine(args.model, device=args.device, compute_type=args.compute_type,
-                  threads=args.threads, max_new=args.max_length, base=args.base)
+                  threads=args.threads, max_new=args.max_length, base=args.base, beams=args.beam)
 
 
 def _as_list(v):

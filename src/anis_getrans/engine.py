@@ -8,11 +8,14 @@
   device="auto"  CUDA GPU가 있으면 cuda(bfloat16), 없으면 cpu(bfloat16, 많이 느림)
   device="cuda"  NVIDIA GPU (메모리 약 11GB 필요)
   device="cpu"   CPU (메모리 약 12GB, GPU보다 느림)
-번역 방식: 지시문 없이 번역할 글만 넣는다(앞뒤 문맥이 있으면 <prev>/<tgt>/<next> 표지). 탐욕 생성, 출력 최대 256토큰.
+번역 방식: 지시문 없이 번역할 글만 넣는다(앞뒤 문맥이 있으면 <prev>/<tgt>/<next> 표지). 빔 탐색 4(beams=1 이면 탐욕 생성), 출력 최대 256토큰.
+0.2.0: 빈 출력, 원문 언어가 남은 출력(번역 안 됨), 같은 말이 되풀이된 출력은 한 줄씩 다시 번역하고,
+그래도 안 되면 앞뒤 문맥 없이 대상 줄만 번역해 원문 글자가 가장 적게 남은 결과를 고른다(정답을 보지 않고 입력·출력 글자만 본다).
 ANIS 의 공개 점수(JK Trans 1.3.1)를 잰 것과 같은 입력·생성 방식이다.
 """
 import json
 import os
+import re
 import sys
 import time
 from dataclasses import dataclass, field
@@ -67,7 +70,25 @@ def available_devices(model_dir=None):
     return out
 
 
-_LEAD = __import__("re").compile(r"^<tgt>\s*(?:<(?:없음|[A-Z]|대사|시스템|독백|선택지|나레이션)>\s*)*")
+_LEAD = re.compile(r"^<tgt>\s*(?:<(?:없음|[A-Z]|대사|시스템|독백|선택지|나레이션)>\s*)*")
+
+
+_KANA = re.compile(r"[ぁ-ゖァ-ヺ]")
+_HANG = re.compile(r"[가-힣]")
+_CTX_TGT = re.compile(r"<tgt>(.*?)(?=<next>|$)", re.S)
+_REP = re.compile(r"(.{2,12}?)\1{4,}")
+
+
+def _bad(prompt, out):
+    """원문 글자가 출력에 남은 정도 + 되풀이(1000). 일본어 원문 → 출력의 가나 수(한글이 없으면 +500), 한국어 원문 → 출력의 한글 수."""
+    m = _CTX_TGT.search(prompt)
+    seg, o = re.sub(r"<[^>]*>", "", m.group(1) if m else prompt), out or ""
+    score = 1000 if _REP.search(o) else 0
+    if _KANA.search(seg) and not _HANG.search(seg):
+        score += len(_KANA.findall(o)) + (500 if _KANA.search(o) and not _HANG.search(o) else 0)
+    elif _HANG.search(seg) and not _KANA.search(seg):
+        score += len(_HANG.findall(o))
+    return score
 
 
 def raw_prompt(source):
@@ -79,17 +100,19 @@ def raw_prompt(source):
 
 
 class Engine:
-    def __init__(self, model_dir=None, device="auto", compute_type="auto", threads=0, base=None, max_new=256, **_ignored):
+    def __init__(self, model_dir=None, device="auto", compute_type="auto", threads=0, base=None, max_new=256, beams=None, **_ignored):
         if device not in DEVICES:
             raise ValueError(f"device는 {', '.join(DEVICES)} 중 하나입니다.")
         self.model_dir = Path(model_dir) if model_dir else default_model_dir()
         rel = self.model_dir / "release.json"
         self.release = json.loads(rel.read_text(encoding="utf-8")) if rel.exists() else {}
         self.max_new = max_new
+        self.beams = max(1, int(beams or os.environ.get("ANIS_GETRANS_BEAMS") or self.release.get("beams", 4)))
         t0 = time.time()
         self._load(device, compute_type, threads, base)
         self.info["load_seconds"] = round(time.time() - t0, 2)
         self.info["version"] = self.release.get("version", "?")
+        self.info["decoding"] = "greedy" if self.beams == 1 else f"beam {self.beams}"
 
     def _load(self, device, compute_type, threads, base):
         import torch
@@ -134,8 +157,18 @@ class Engine:
             seq.append(t)
         return self.tok.decode(seq, skip_special_tokens=True).strip()
 
-    def _generate(self, ids, budget=8000, max_batch=16, progress=None):
+    def _one(self, ids_i, ctx, beam_kw):
         import torch
+        x = torch.tensor([ids_i], device=self.device)
+        with ctx:
+            y = self.model.generate(input_ids=x, attention_mask=torch.ones_like(x), do_sample=False, max_new_tokens=self.max_new,
+                                    eos_token_id=[EOS, TURN_END], pad_token_id=PAD, **beam_kw)
+        return self._decode(y[0, len(ids_i):].tolist())
+
+    def _generate(self, ids, prompts, budget=8000, max_batch=16, progress=None):
+        import torch
+        beam_kw = dict(num_beams=self.beams, early_stopping=True) if self.beams > 1 else {}
+        budget = budget // self.beams
         order = sorted(range(len(ids)), key=lambda i: -len(ids[i]))
         out, o = [None] * len(ids), 0
         ctx = torch.autocast("cuda", dtype=self.dtype) if self.device == "cuda" else torch.autocast("cpu", enabled=False)
@@ -150,18 +183,23 @@ class Engine:
                 x = x.to(self.device)
                 with ctx:
                     y = self.model.generate(input_ids=x, attention_mask=x.ne(PAD), do_sample=False, max_new_tokens=self.max_new,
-                                            eos_token_id=[EOS, TURN_END], pad_token_id=PAD)
+                                            eos_token_id=[EOS, TURN_END], pad_token_id=PAD, **beam_kw)
                 for j, i in enumerate(chunk):
                     out[i] = self._decode(y[j, width:].tolist())
                 if progress:
                     progress(o, len(order))
             # 여러 문장을 한꺼번에 생성하면 가끔 한 묶음이 통째로 빈 결과가 된다 → 빈 결과만 한 문장씩 다시 생성
             for i in [i for i in range(len(ids)) if not out[i]]:
-                x = torch.tensor([ids[i]], device=self.device)
-                with ctx:
-                    y = self.model.generate(input_ids=x, attention_mask=torch.ones_like(x), do_sample=False, max_new_tokens=self.max_new,
-                                            eos_token_id=[EOS, TURN_END], pad_token_id=PAD)
-                out[i] = self._decode(y[0, len(ids[i]):].tolist())
+                out[i] = self._one(ids[i], ctx, beam_kw)
+            # 원문 언어가 남거나(번역 안 됨) 같은 말이 되풀이된 출력 → 한 줄씩 다시, 그래도 남으면 앞뒤 문맥 없이 대상 줄만.
+            # 원문 글자가 가장 적게 남고 되풀이가 없는 후보를 고른다(처음 것이 가장 나으면 그대로).
+            for i in [i for i in range(len(ids)) if _bad(prompts[i], out[i]) > 0]:
+                cands = [out[i], self._one(ids[i], ctx, beam_kw)]
+                m = _CTX_TGT.search(prompts[i])
+                if _bad(prompts[i], cands[-1]) > 0 and m and ("<prev>" in prompts[i] or "<next>" in prompts[i]):
+                    cands.append(self._one(self._ids(raw_prompt("<tgt>" + m.group(1))), ctx, beam_kw))
+                best = min(range(len(cands)), key=lambda j: (_bad(prompts[i], cands[j]), j))
+                out[i] = cands[best]
         return out
 
     # ---------- 번역 ----------
@@ -171,19 +209,20 @@ class Engine:
         if direction not in DIRECTIONS:
             raise ValueError(f"direction must be one of {DIRECTIONS}")
         items = [Item(x) if isinstance(x, str) else x for x in items]
-        results, todo, ids = [None] * len(items), [], []
+        results, todo, ids, prompts = [None] * len(items), [], [], []
         for i, it in enumerate(items):
             if not it.text.strip():
                 results[i] = Result("")
                 continue
             src = build_source(it.text, it.prev, it.next, line_type) if (it.prev or it.next or "<tgt>" in it.text) else it.text
-            p = self._ids(raw_prompt(src))
+            rp = raw_prompt(src)
+            p = self._ids(rp)
             if len(p) > MAX_PROMPT_TOKENS:
                 results[i] = Result("", error=f"입력이 너무 깁니다 ({len(p)} 토큰, 최대 {MAX_PROMPT_TOKENS}). 문맥 줄 수를 줄여 주세요.")
                 continue
-            todo.append(i); ids.append(p)
+            todo.append(i); ids.append(p); prompts.append(rp)
         if ids:
-            outs = self._generate(ids, max_batch=max(1, batch_size), progress=progress)
+            outs = self._generate(ids, prompts, max_batch=max(1, batch_size), progress=progress)
             for i, p, o in zip(todo, ids, outs):
                 src = items[i].text
                 if "\n" in src and "<br>" not in src:

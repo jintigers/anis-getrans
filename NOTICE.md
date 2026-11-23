@@ -1,6 +1,6 @@
 # NOTICE / 고지
 
-ANIS GeTrans 0.1.0
+ANIS GeTrans 0.2.0
 
 이 배포본의 어댑터 가중치(model/adapter)와 실행 프로그램은 ANIS가 만들었으며 LICENSE-ko.md(정본) / LICENSE-en.md 를 따릅니다.
 The adapter weights (model/adapter) and programs in this bundle are made by ANIS and are licensed under LICENSE-ko.md (authoritative) / LICENSE-en.md.

@@ -273,7 +273,7 @@ class Handler(BaseHTTPRequestHandler):
                 return self._ollama_chat(body)
             if path == "/api/show":
                 name, d = self.tr.resolve_model(body.get("model") or body.get("name"))
-                return self._json(200, {"modelfile": "", "parameters": "greedy", "template": "{{ .Prompt }}",
+                return self._json(200, {"modelfile": "", "parameters": "num_beams 4", "template": "{{ .Prompt }}",
                                         "details": self._ollama_details(), "model_info": {
                                             "general.architecture": "anis-getrans", "anis.direction": d,
                                             "general.parameter_count": self._params()},

@@ -1,16 +1,13 @@
-# ANIS GeTrans 0.1.0
+# ANIS GeTrans 0.2.0
 
-일본어 ↔ 한국어 번역 모델입니다. Google의 공개 언어 모델 **Gemma 4 E2B**를 바탕으로 ANIS의 번역 데이터로 다시 학습했습니다(버전 0.1.0).
+일본어 ↔ 한국어 번역 모델입니다. Google의 공개 언어 모델 **Gemma 4 E2B**를 바탕으로 ANIS의 번역 데이터로 다시 학습했습니다(버전 0.2.0).
 ANIS Trans보다 무겁고 느리지만, 앞뒤 문맥을 더 잘 읽어 생략된 주어·말투·여러 뜻을 가진 낱말을 더 잘 고릅니다.
 
 - 방향: 일본어 → 한국어, 한국어 → 일본어 (원문 언어로 자동 판별)
 - 앞뒤 문맥: 대상 문장 앞뒤의 대사를 같이 넣으면 번역이 더 정확해집니다
 - 쓰는 방법 세 가지: 명령줄(CLI), 브라우저 화면(GUI), Ollama·OpenAI 호환 로컬 API 서버 — ANIS Trans와 같은 사용법입니다
 - 실행 엔진: PyTorch + Transformers (NVIDIA GPU 권장, 메모리 약 11GB)
-- **이 저장소에는 실행 프로그램 소스만 있습니다.** ANIS가 학습한 어댑터(약 185MB)는 [Hugging Face jintigers/anis-getrans](https://huggingface.co/jintigers/anis-getrans)에서 라이선스에 동의한 뒤 받아 `model/adapter/` 에 넣습니다:
-  `hf download jintigers/anis-getrans --local-dir . --include "model/adapter/*"`
-  (어댑터까지 든 배포판은 [krmod.anis.co.kr/ai-lab](https://krmod.anis.co.kr/ai-lab)에서도 받을 수 있습니다.)
-- 바탕 모델(약 9.6GB)은 처음 실행할 때 HuggingFace에서 자동으로 내려받습니다(인터넷 필요, 한 번만).
+- **이 압축 파일에는 ANIS가 학습한 부분(어댑터, 약 185MB)만 들어 있습니다.** 바탕 모델(약 9.6GB)은 처음 실행할 때 HuggingFace에서 자동으로 내려받습니다(인터넷 필요, 한 번만).
 
 ## 라이선스 요약 (초안)
 
@@ -40,7 +37,7 @@ ANIS Trans보다 무겁고 느리지만, 앞뒤 문맥을 더 잘 읽어 생략�
 ### Linux / macOS
 
 ```bash
-cd anis-getrans-0.1.0
+cd anis-getrans-0.2.0
 ./install.sh            # Linux는 CUDA판 PyTorch가 함께 설치됩니다
 ./install.sh --cpu      # GPU가 없는 PC (받는 크기가 작음, 번역은 느림)
 ```
@@ -50,7 +47,7 @@ cd anis-getrans-0.1.0
 폴더에서 `install.cmd` 를 두 번 클릭하거나, 명령 프롬프트에서:
 
 ```bat
-cd anis-getrans-0.1.0
+cd anis-getrans-0.2.0
 install.cmd             :: NVIDIA GPU용 CUDA판 PyTorch
 install.cmd --cpu       :: GPU가 없는 PC
 ```
@@ -186,7 +183,7 @@ anis-getrans-server --device cuda --port 11434   # GPU로, Ollama 기본 포트�
 
 - 비스트리밍 응답은 각 API의 표준 형식을 따릅니다. OpenAI는 `choices[0].message.content` 와 `usage`, Ollama는 `response` 또는 `message.content` 와 `done`, `eval_count` 등입니다.
 - 스트리밍도 됩니다. Ollama는 NDJSON이고 `stream` 을 생략하면 켜집니다(Ollama와 같음). OpenAI는 `"stream": true` 일 때 SSE로 보내고, 마지막에 `data: [DONE]` 을 보냅니다. 번역을 다 마친 뒤 줄 단위로 나눠 보내므로, 글자가 하나씩 나오지는 않습니다.
-- `temperature`, `top_p` 같은 샘플링 옵션은 무시합니다. 번역은 항상 탐욕 생성으로 합니다(같은 입력이면 같은 결과).
+- `temperature`, `top_p` 같은 샘플링 옵션은 무시합니다. 번역은 항상 빔 탐색 4로 합니다(같은 입력이면 같은 결과).
 
 ### 모델 이름과 번역 방향
 
@@ -271,7 +268,7 @@ curl http://127.0.0.1:11436/v1/chat/completions -H "Content-Type: application/js
 
 - 기본 정밀도는 bfloat16입니다(공개 점수를 잰 것과 같은 설정). `--compute-type float16` 은 bfloat16을 지원하지 않는 오래된 GPU용입니다.
 - **macOS / AMD GPU / Intel GPU**: 지금은 CPU로 실행됩니다.
-- 번역 품질이 같아도 속도는 ANIS Trans보다 느립니다(GPU에서 한 줄 약 1초). 많은 줄을 빨리 옮겨야 하면 ANIS Trans를 쓰세요.
+- 번역 품질이 같아도 속도는 ANIS Trans보다 느립니다(GPU에서 한 줄 약 1.2초). 많은 줄을 빨리 옮겨야 하면 ANIS Trans를 쓰세요.
 
 ---
 
@@ -282,7 +279,7 @@ curl http://127.0.0.1:11436/v1/chat/completions -H "Content-Type: application/js
 - **줄바꿈**: 한 문장 안의 줄바꿈은 `<br>` 로 바꿔 넣고, 번역문에서 다시 줄바꿈으로 돌립니다. 파일 번역은 한 줄 = 한 문장을 유지하므로 `<br>` 그대로 둡니다.
 - **게임 변수**: `<v1>` 같은 자리 표시자는 대체로 그대로 남습니다. 다만 한 문장에 변수가 여러 개면 일부가 빠지거나 바뀔 수 있으니 번역 후 확인하세요.
 - **길이**: 문맥 포함 한 줄 입력은 4,096토큰까지입니다. 넘치면 그 줄은 오류로 표시됩니다. 앞뒤 문맥 줄 수를 줄여 주세요.
-- **생성**: 탐욕 생성(같은 입력이면 같은 결과), 한 줄 출력 최대 256토큰(`--max-length`). 지시문 없이 번역할 글만 넣는 방식이라 원문 언어로 번역 방향이 정해집니다.
+- **생성**: 빔 탐색 4(같은 입력이면 같은 결과, `--beam 1` 이면 탐욕 생성으로 더 빠름), 한 줄 출력 최대 256토큰(`--max-length`). 빈 출력·번역되지 않고 원문 언어가 남은 출력·같은 말이 되풀이된 출력은 한 줄씩 다시 번역하고, 그래도 안 되면 앞뒤 문맥 없이 대상 줄만 번역합니다. 지시문 없이 번역할 글만 넣는 방식이라 원문 언어로 번역 방향이 정해집니다.
 
 ---
 
@@ -304,7 +301,7 @@ curl http://127.0.0.1:11436/v1/chat/completions -H "Content-Type: application/js
 ## 8. 폴더 구성
 
 ```
-anis-getrans-0.1.0/
+anis-getrans-0.2.0/
 ├─ README.md                         이 문서
 ├─ LICENSE-ko.md, LICENSE-en.md      라이선스 (초안, 한국어 정본·영어 번역)
 ├─ NOTICE.md, LICENSE-APACHE-2.0.txt 바탕 모델(Gemma 4 E2B) 고지와 Apache License 2.0
@@ -322,4 +319,7 @@ anis-getrans-0.1.0/
 
 ## 9. 버전
 
-ANIS GeTrans **0.1.0**은 첫 공개판입니다. ANIS Trans와는 따로 개발하며 버전 번호도 따로 셉니다.
+ANIS GeTrans **0.2.0**은 두 번째 공개판입니다. ANIS Trans와는 따로 개발하며 버전 번호도 따로 셉니다.
+
+- **0.2.0** (2026-11-23): 어댑터(가중치)는 0.1.0과 같고 번역 방식이 바뀌었습니다. 빔 탐색 4로 번역하고, 빈 출력·원문 언어가 남은 출력(번역 안 됨)·같은 말이 되풀이된 출력을 다시 번역해 고칩니다. 한 줄 번역은 0.1.0보다 조금 느립니다(`--beam 1` 로 0.1.0과 같은 탐욕 생성을 쓸 수 있습니다).
+- **0.1.0** (2026-11-16): 첫 공개판.
